@@ -1,4 +1,5 @@
 #space invaders game
+# will create a small ML program that will learn from the player's choices
 
 import pygame 
 import sys
