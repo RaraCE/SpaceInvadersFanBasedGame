@@ -4,6 +4,7 @@
 import pygame 
 import sys
 import random
+import math
 
 # Initialize Pygame
 pygame.init()
@@ -18,9 +19,11 @@ BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 
 # Ship setup
-ship_width, ship_height = 50, 30
+ship_player = pygame.image.load("playerspaceship.png").convert_alpha()
+ship_player = pygame.transform.scale(ship_player, (40, 40))
 ship_x, ship_y = WIDTH // 2, HEIGHT - 60
 ship_speed = 5
+ship_width, ship_height = ship_player.get_size()
 
 # Ship lives
 lives = 3
@@ -104,6 +107,22 @@ def game_loop():
     ship_x, ship_y = WIDTH // 2, HEIGHT - 60
     lives = 3
 
+    # Swooping enemy setup
+    swooping_enemy = {
+        "x": -50,  # starts off-screen
+        "y": 100,
+        "alive": True,
+        "timer": 0  # time counter for sine motion
+    }
+    swooping_enemy_speed = 2
+    swooping_amplitude = 100
+    swooping_frequency = 0.01  # smaller = wider wave
+
+    #swooping enemy bullets with cooldown
+    swooping_enemy_bullets = []
+    swooping_enemy_bullet_speed = 4
+    swooping_enemy_shoot_cooldown = 0
+
     bullets = []
     enemy_bullets = []
     enemy_fire_timer = 0
@@ -133,7 +152,7 @@ def game_loop():
             pygame.draw.rect(screen, (255, 255, 0), (bullet[0], bullet[1], enemy_bullet_width, enemy_bullet_height))
 
         # draw ship
-        pygame.draw.rect(screen, WHITE, (ship_x, ship_y, ship_width, ship_height))
+        screen.blit(ship_player, (ship_x, ship_y, ship_width, ship_height))
 
         # Events
         for event in pygame.event.get():
@@ -151,6 +170,17 @@ def game_loop():
             enemy["x"] += enemy["dir"] * enemy_speed
             if enemy["x"] <= 0 or enemy["x"] >= WIDTH - enemy_width:
                 enemy["dir"] *= -1
+
+        if swooping_enemy["alive"]:
+            swooping_enemy["timer"] += 1
+            swooping_enemy["x"] += swooping_enemy_speed
+            swooping_enemy["y"] = 100 + math.sin(swooping_enemy["timer"] * swooping_frequency) * swooping_amplitude
+
+            # If off-screen, reset to re-enter later
+            if swooping_enemy["x"] > WIDTH + 50:
+                swooping_enemy["x"] = -50
+                swooping_enemy["timer"] = 0
+            screen.blit(enemy_image, (swooping_enemy["x"], swooping_enemy["y"]))
 
         # Enemy fires bullet periodically (random)
         enemy_fire_timer += 1
@@ -177,7 +207,7 @@ def game_loop():
         for bullet in bullets:
             pygame.draw.rect(screen, BULLET_COLOR, (bullet[0], bullet[1], bullet_width, bullet_height))
 
-        #bullet-enemy collisions
+        #bullet-enemy collisions from player's bullet
         for bullet in bullets[:]:
             for enemy in enemies[:]:
                 if (enemy["x"] < bullet[0] < enemy["x"] + enemy_width and
@@ -185,7 +215,44 @@ def game_loop():
                     bullets.remove(bullet)
                     enemies.remove(enemy)
                     break
+        
+        #swooping enemy collision from player's bullet
+        for bullet in bullets[:]:
+            if (swooping_enemy["alive"] and
+                swooping_enemy["x"] < bullet[0] < swooping_enemy["x"] + enemy_width and
+                swooping_enemy["y"] < bullet[1] < swooping_enemy["y"] + enemy_height):
+                bullets.remove(bullet)
+                swooping_enemy["alive"] = False
+                break
+
+        # Swooping enemy firing bullets
+        if swooping_enemy["alive"]:
+            if swooping_enemy_shoot_cooldown <= 0:
+                swooping_enemy_bullets.append([swooping_enemy["x"] + enemy_width // 2, swooping_enemy["y"] + enemy_height])
+                swooping_enemy_shoot_cooldown = 60  # cooldown in frames (1 second at 60 FPS)
+            else:
+                swooping_enemy_shoot_cooldown -= 1
+        
+        # Move and draw swooping enemy bullets
+        for bullet in swooping_enemy_bullets[:]:
+            bullet[1] += swooping_enemy_bullet_speed
+            if bullet[1] > HEIGHT:
+                swooping_enemy_bullets.remove(bullet)
+            else:
+                pygame.draw.rect(screen, (255, 0, 0), (bullet[0], bullet[1], 4, 10))  # red enemy bullet
     
+        #swooping enemy bullet-ship collisions
+        for bullet in swooping_enemy_bullets[:]:
+            if (ship_x < bullet[0] < ship_x + ship_width and
+                ship_y < bullet[1] < ship_y + ship_height):
+                swooping_enemy_bullets.remove(bullet)
+                lives -= 1
+                # Hide ship briefly and reposition
+                ship_x, ship_y = WIDTH // 2, HEIGHT - 60
+                pygame.time.delay(500)  # 0.5 second pause
+                break
+
+        
         #Bullet-ship collisions
         for bullet in enemy_bullets[:]:
             if (ship_x < bullet[0] < ship_x + ship_width and
